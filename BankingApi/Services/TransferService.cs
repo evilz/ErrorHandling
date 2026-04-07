@@ -18,6 +18,10 @@ public sealed class TransferService(
     ITransferRepository transferRepository,
     IAccountRepository accountRepository) : ITransferService
 {
+    // Global lock ensures atomicity of the debit + credit operation.
+    // A production system would use database transactions or optimistic concurrency instead.
+    private static readonly SemaphoreSlim _transferLock = new(1, 1);
+
     private static string GenerateReference() =>
         $"TRF-{Guid.NewGuid():N}"[..16].ToUpperInvariant();
 
@@ -53,6 +57,7 @@ public sealed class TransferService(
         if (request.Amount <= 0)
             throw new BusinessRuleException("Transfer amount must be greater than zero.");
 
+        // Validate accounts before acquiring the lock to fail fast without holding it.
         var fromAccount = await accountRepository.GetByIdAsync(request.FromAccountId, ct)
             ?? throw new NotFoundException($"Source account '{request.FromAccountId}' was not found.");
 
@@ -68,35 +73,49 @@ public sealed class TransferService(
         if (fromAccount.Currency != request.Currency)
             throw new BusinessRuleException($"Source account currency '{fromAccount.Currency}' does not match transfer currency '{request.Currency}'.");
 
-        if (fromAccount.Balance < request.Amount)
-            throw new BusinessRuleException("Insufficient funds in source account.");
-
-        var transfer = new Transfer
+        await _transferLock.WaitAsync(ct);
+        try
         {
-            FromAccountId = request.FromAccountId,
-            ToAccountId = request.ToAccountId,
-            Amount = request.Amount,
-            Currency = request.Currency,
-            Description = request.Description,
-            Reference = GenerateReference(),
-            Status = TransferStatus.Pending
-        };
+            // Re-read accounts inside the lock to get the latest balances.
+            fromAccount = await accountRepository.GetByIdAsync(request.FromAccountId, ct)
+                ?? throw new NotFoundException($"Source account '{request.FromAccountId}' was not found.");
 
-        await transferRepository.AddAsync(transfer, ct);
+            toAccount = await accountRepository.GetByIdAsync(request.ToAccountId, ct)
+                ?? throw new NotFoundException($"Destination account '{request.ToAccountId}' was not found.");
 
-        // Perform the balance update
-        fromAccount.Balance -= request.Amount;
-        fromAccount.UpdatedAt = DateTimeOffset.UtcNow;
-        await accountRepository.UpdateAsync(fromAccount, ct);
+            if (fromAccount.Balance < request.Amount)
+                throw new BusinessRuleException("Insufficient funds in source account.");
 
-        toAccount.Balance += request.Amount;
-        toAccount.UpdatedAt = DateTimeOffset.UtcNow;
-        await accountRepository.UpdateAsync(toAccount, ct);
+            var transfer = new Transfer
+            {
+                FromAccountId = request.FromAccountId,
+                ToAccountId = request.ToAccountId,
+                Amount = request.Amount,
+                Currency = request.Currency,
+                Description = request.Description,
+                Reference = GenerateReference(),
+                Status = TransferStatus.Pending
+            };
 
-        transfer.Status = TransferStatus.Completed;
-        transfer.CompletedAt = DateTimeOffset.UtcNow;
-        var completed = await transferRepository.UpdateAsync(transfer, ct);
+            await transferRepository.AddAsync(transfer, ct);
 
-        return ToResponse(completed);
+            fromAccount.Balance -= request.Amount;
+            fromAccount.UpdatedAt = DateTimeOffset.UtcNow;
+            await accountRepository.UpdateAsync(fromAccount, ct);
+
+            toAccount.Balance += request.Amount;
+            toAccount.UpdatedAt = DateTimeOffset.UtcNow;
+            await accountRepository.UpdateAsync(toAccount, ct);
+
+            transfer.Status = TransferStatus.Completed;
+            transfer.CompletedAt = DateTimeOffset.UtcNow;
+            var completed = await transferRepository.UpdateAsync(transfer, ct);
+
+            return ToResponse(completed);
+        }
+        finally
+        {
+            _transferLock.Release();
+        }
     }
 }
