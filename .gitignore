@@ -1,0 +1,15 @@
+## .NET Build artifacts
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.nupkg
+*.snupkg
+TestResults/
+
+## Rider / JetBrains
+.idea/
+
+## VS Code
+.vscode/
