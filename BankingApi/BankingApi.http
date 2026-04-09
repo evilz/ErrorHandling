@@ -1,0 +1,106 @@
+@BankingApi_HostAddress = http://localhost:5000
+
+### List all accounts
+GET {{BankingApi_HostAddress}}/api/accounts
+Accept: application/json
+
+###
+
+### Create a bank account
+POST {{BankingApi_HostAddress}}/api/accounts
+Content-Type: application/json
+
+{
+  "ownerName": "Alice Dupont",
+  "ownerId": "user-001",
+  "currency": "EUR",
+  "initialBalance": 1000.00
+}
+
+###
+
+### Get account by ID  (replace <id> with a real account GUID)
+# @name account
+GET {{BankingApi_HostAddress}}/api/accounts/<id>
+Accept: application/json
+
+###
+
+### Get account balance
+GET {{BankingApi_HostAddress}}/api/accounts/<id>/balance
+Accept: application/json
+
+###
+
+### Update account
+PUT {{BankingApi_HostAddress}}/api/accounts/<id>
+Content-Type: application/json
+
+{
+  "ownerName": "Alice Martin"
+}
+
+###
+
+### Close account
+DELETE {{BankingApi_HostAddress}}/api/accounts/<id>
+
+###
+
+### List all cards
+GET {{BankingApi_HostAddress}}/api/cards
+Accept: application/json
+
+###
+
+### Issue a card
+POST {{BankingApi_HostAddress}}/api/cards
+Content-Type: application/json
+
+{
+  "accountId": "<account-id>",
+  "cardholderName": "Alice Dupont",
+  "type": 0
+}
+
+###
+
+### Activate card  (replace <card-id>)
+PUT {{BankingApi_HostAddress}}/api/cards/<card-id>/activate
+
+###
+
+### Block card
+PUT {{BankingApi_HostAddress}}/api/cards/<card-id>/block
+
+###
+
+### Cancel card
+DELETE {{BankingApi_HostAddress}}/api/cards/<card-id>
+
+###
+
+### List all transfers
+GET {{BankingApi_HostAddress}}/api/transfers
+Accept: application/json
+
+###
+
+### Create a transfer
+POST {{BankingApi_HostAddress}}/api/transfers
+Content-Type: application/json
+
+{
+  "fromAccountId": "<from-account-id>",
+  "toAccountId": "<to-account-id>",
+  "amount": 250.00,
+  "currency": "EUR",
+  "description": "Monthly rent"
+}
+
+###
+
+### Health check
+GET {{BankingApi_HostAddress}}/health
+
+###
